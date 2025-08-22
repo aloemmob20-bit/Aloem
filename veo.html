@@ -1,138 +1,95 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8" />
-  <title>Veo 2 — Generate Video 9:16 + Image Upload</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <title>Veo2 Image-to-Video Demo</title>
   <style>
-    body{margin:0;font-family:system-ui,Arial;background:#0b1020;color:#eee}
-    .wrap{max-width:900px;margin:32px auto;padding:0 16px}
-    .card{background:#121935;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
-    h1{margin:0 0 8px;font-size:22px}
-    label{font-size:14px;display:block;margin-top:12px}
-    input,textarea,button{width:100%;padding:12px;margin-top:4px;border-radius:10px;border:1px solid #2a355d;background:#0d1430;color:#eee;font-size:15px}
-    textarea{min-height:100px}
-    button{background:linear-gradient(180deg,#5ea0ff,#4b86ff);border:none;font-weight:bold;cursor:pointer}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .log{background:#0a0f22;border:1px solid #2a355d;border-radius:10px;padding:10px;white-space:pre-wrap;margin-top:12px;min-height:80px}
-    video{width:100%;margin-top:12px;border-radius:10px;background:#000}
-    #previewImg{max-width:200px;max-height:200px;display:none;margin-top:8px;border-radius:8px;border:1px solid #2a355d}
-    a.btn{display:inline-block;margin-top:10px;padding:10px 14px;background:#a6c7ff;color:#000;font-weight:bold;border-radius:10px;text-decoration:none}
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    textarea, input { width: 100%; margin: 10px 0; }
+    video { max-width: 100%; margin-top: 20px; display: none; }
+    #status { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
-    <h1>Veo 2 — Video Generator (9:16) + Image</h1>
-    <label>API Key
-      <input id="apiKey" type="password" placeholder="Tempel API Key Google Anda">
-    </label>
-    <label>Prompt
-      <textarea id="prompt" placeholder="Deskripsi video..."></textarea>
-    </label>
-    <label>Upload Gambar (opsional, .jpg/.png)
-      <input id="image" type="file" accept="image/*">
-      <img id="previewImg" />
-    </label>
-    <button id="go">Generate Video</button>
-    <div id="log" class="log">Log siap…</div>
-    <a id="download" class="btn" href="#" download="veo2.mp4" style="display:none">⬇️ Download MP4</a>
-    <video id="preview" controls style="display:none"></video>
-  </div>
-</div>
+  <h2>🎬 Generate Video dengan Veo2 (9:16)</h2>
 
-<script>
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const $ = id => document.getElementById(id);
-const log = t => { $("log").textContent += (typeof t==="string"?t:JSON.stringify(t,null,2))+"\n"; $("log").scrollTop=$("log").scrollHeight; };
+  <input type="file" id="imageInput" accept="image/*"><br>
+  <textarea id="prompt" rows="4" placeholder="Tulis deskripsi video..."></textarea><br>
+  <button onclick="generateVideo()">🚀 Generate Video</button>
 
-// convert file ke base64
-async function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader = new FileReader();
-    reader.onload = ()=> resolve(reader.result.split(",")[1]);
-    reader.onerror = e => reject(e);
-    reader.readAsDataURL(file);
-  });
-}
+  <p id="status"></p>
+  <video id="resultVideo" controls></video>
 
-async function startJob(apiKey, payload){
-  const res = await fetch(`${BASE_URL}/models/veo-2.0-generate-001:predictLongRunning`,{
-    method:"POST",
-    headers:{ "x-goog-api-key":apiKey,"Content-Type":"application/json"},
-    body:JSON.stringify(payload)
-  });
-  if(!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-async function pollJob(apiKey, name, onTick){
-  let tries=0;
-  while(true){
-    await new Promise(r=>setTimeout(r,5000));
-    tries++;
-    const res=await fetch(`${BASE_URL}/${name}`,{headers:{"x-goog-api-key":apiKey}});
-    if(!res.ok) throw new Error(await res.text());
-    const st=await res.json();
-    onTick?.(st,tries);
-    if(st.done) return st;
-  }
-}
-async function downloadSigned(apiKey, uri){
-  const res=await fetch(uri,{headers:{"x-goog-api-key":apiKey}});
-  if(!res.ok) throw new Error(await res.text());
-  return res.blob();
-}
+  <script>
+    // Ganti API key di sini ⚠️ (tidak aman kalau dipakai di hosting publik)
+    const API_KEY = "AIzaSyAm8ng_6fYaW2qo7sIJIIQP_vXi8qH_rsA";
+    const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/veo-2.0-generate-001:generateVideo?key=" + API_KEY;
 
-// preview image saat upload
-$("image").addEventListener("change",()=>{
-  const f=$("image").files[0];
-  if(f){ $("previewImg").src=URL.createObjectURL(f); $("previewImg").style.display="block"; }
-});
+    async function generateVideo() {
+      const prompt = document.getElementById("prompt").value;
+      const file = document.getElementById("imageInput").files[0];
+      if (!file) { alert("Pilih gambar dulu!"); return; }
 
-$("go").addEventListener("click", async ()=>{
-  const apiKey=$("apiKey").value.trim();
-  const prompt=$("prompt").value.trim();
-  const imgFile=$("image").files[0];
+      document.getElementById("status").innerText = "⏳ Upload & proses...";
 
-  $("download").style.display="none";
-  $("preview").style.display="none";
-  $("log").textContent="";
+      const base64Image = await toBase64(file);
 
-  if(!apiKey){alert("Isi API Key dulu");return;}
-  if(!prompt){alert("Isi prompt dulu");return;}
+      const requestBody = {
+        instances: [{
+          prompt: prompt,
+          image: {
+            bytesBase64Encoded: base64Image.split(",")[1],
+            mimeType: file.type
+          }
+        }],
+        parameters: {
+          aspectRatio: "9:16",
+          durationSeconds: 6
+        }
+      };
 
-  try{
-    let imagesArr = [];
-    if(imgFile){
-      log("Konversi gambar ke Base64…");
-      const b64 = await fileToBase64(imgFile);
-      imagesArr.push({ mimeType: imgFile.type, bytesBase64: b64 });
+      try {
+        const response = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody)
+        });
+
+        const result = await response.json();
+        console.log(result);
+
+        if (result.error) {
+          document.getElementById("status").innerText = "❌ ERROR: " + result.error.message;
+          return;
+        }
+
+        // Biasanya API balikin job ID, bukan langsung video → harus polling
+        if (result.video && result.video.uri) {
+          showVideo(result.video.uri);
+        } else {
+          document.getElementById("status").innerText = "✅ Job dikirim. Cek console untuk detail job (harus polling).";
+        }
+
+      } catch (err) {
+        document.getElementById("status").innerText = "❌ Request gagal: " + err;
+      }
     }
 
-    log("Mengirim job video…");
-    const payload = {
-      instances:[{ prompt, images: imagesArr }],
-      parameters:{ aspectRatio:"9:16" }
-    };
-    const op = await startJob(apiKey,payload);
-    log("Job dimulai: "+op.name);
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
 
-    const final=await pollJob(apiKey,op.name,(s,i)=> log(`Polling #${i} — done: ${!!s.done}`));
-    const sample=final?.response?.generateVideoResponse?.generatedSamples?.[0];
-    if(!sample?.video?.uri) throw new Error("Tidak ada URI video");
-    log("Mengunduh video…");
-    const blob=await downloadSigned(apiKey,sample.video.uri);
-    const url=URL.createObjectURL(blob);
-    $("download").href=url;
-    $("download").style.display="inline-block";
-    $("preview").src=url;
-    $("preview").style.display="block";
-    log("Selesai ✅");
-  }catch(e){
-    console.error(e);
-    log("ERROR: "+e.message);
-  }
-});
-</script>
+    function showVideo(url) {
+      document.getElementById("status").innerText = "✅ Video siap!";
+      const videoEl = document.getElementById("resultVideo");
+      videoEl.src = url;
+      videoEl.style.display = "block";
+    }
+  </script>
 </body>
 </html>
