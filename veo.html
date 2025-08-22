@@ -13,12 +13,14 @@
     progress{width:100%;margin:10px 0;display:none}
     video{width:100%;max-height:70vh;margin-top:16px;background:#000;border-radius:12px}
     .muted{color:#666;font-size:.9rem}
-    #download{display:none;margin-top:12px;display:inline-block;padding:8px 12px;background:#4caf50;color:#fff;border-radius:6px;text-decoration:none}
   </style>
 </head>
 <body>
-  <h1>🎥 Veo 2 – Generate Video 9:16 dari Gambar</h1>
-  <p class="muted">Gunakan API key dari Google AI Studio / Skill Boost. <br><b>Catatan:</b> API key akan berjalan di browser Anda (jangan dipakai untuk produksi).</p>
+  <h1>aloemTV Veo2</h1>
+  <p class="muted">
+    Masukkan API key dari <b>Google AI Studio / Skill Boost</b>.<br>
+    <b>Catatan:</b> API key dijalankan di browser Anda (jangan untuk produksi).
+  </p>
 
   <label>API Key:
     <input id="apiKey" type="password" placeholder="Masukkan API Key (AI...)" />
@@ -41,8 +43,6 @@
   <div id="status" class="muted"></div>
 
   <video id="out" controls playsinline></video>
-  <br />
-  <a id="download" download="veo2-image-video.mp4">⬇ Download Video</a>
 
   <script type="module">
     import { GoogleGenAI } from "https://esm.sh/@google/genai";
@@ -55,9 +55,9 @@
       const file = $("img").files[0];
       const prompt = $("prompt").value.trim();
       const ratio = $("ratio").value.trim() || "9:16";
-      const status = $("status"), pg = $("pg"), videoEl = $("out"), dl = $("download");
+      const status = $("status"), pg = $("pg"), videoEl = $("out");
 
-      dl.style.display="none"; videoEl.removeAttribute("src"); videoEl.load();
+      videoEl.removeAttribute("src"); videoEl.load();
       if(!apiKey){alert("Masukkan API Key dulu");return;}
       if(!file){alert("Upload gambar dulu");return;}
       if(!prompt){alert("Isi prompt deskripsinya");return;}
@@ -101,9 +101,25 @@
         const blob = new Blob([fileMeta.video.videoBytes], { type:"video/mp4" });
         const url = URL.createObjectURL(blob);
 
+        // tampilkan video di halaman
         videoEl.src=url; videoEl.play().catch(()=>{});
-        dl.href=url; dl.style.display="inline-block";
-        status.textContent="✅ Selesai!";
+
+        // buat link download
+        const a=document.createElement("a");
+        a.href=url;
+        a.download="veo2-video.mp4";
+
+        // cek support atribut download
+        if(typeof a.download !== "undefined"){
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } else {
+          // fallback Safari iOS/macOS
+          window.open(url, "_blank");
+        }
+
+        status.textContent="✅ Selesai! Video sudah tersedia.";
         pg.value=100; setTimeout(()=>pg.style.display="none",1200);
 
       } catch(e){
