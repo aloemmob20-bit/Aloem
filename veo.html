@@ -2,192 +2,115 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Veo2 Video Generator + 2 Gambar</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veo 2 – Image to Video (9:16)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+    input, textarea, button, select { display: block; margin: 10px 0; width: 100%; padding: 8px; }
+    video { width: 100%; margin-top: 20px; border: 1px solid #ccc; border-radius: 8px; }
+    progress { width: 100%; height: 20px; margin-top: 10px; }
+  </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-6">
-  <div class="w-full max-w-lg bg-gray-800 rounded-2xl shadow-xl p-6 space-y-4">
-    <h1 class="text-2xl font-bold text-center">🎬 Veo2 Video Generator</h1>
+<body>
+  <h1>🎥 Veo 2 – Image → Video</h1>
+  <input id="apiKey" type="password" placeholder="Masukkan Google API Key">
+  <input id="img" type="file" accept="image/*">
+  <textarea id="prompt" rows="3" placeholder="Tulis deskripsi video..."></textarea>
+  <select id="ratio">
+    <option value="9:16">9:16 (default)</option>
+    <option value="16:9">16:9</option>
+    <option value="1:1">1:1</option>
+  </select>
+  <button id="gen">Generate Video</button>
+  <progress id="pg" value="0" max="100" style="display:none"></progress>
+  <p id="status"></p>
+  <video id="out" controls></video>
 
-    <!-- Input API Key -->
-    <div>
-      <label class="block mb-1">API Key Google</label>
-      <input id="apiKey" type="text" placeholder="Masukkan API Key"
-        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
-    </div>
+  <script type="module">
+    import { GoogleGenAI } from "https://esm.sh/@google/genai";
 
-    <!-- Input Prompt -->
-    <div>
-      <label class="block mb-1">Prompt (Deskripsi Video)</label>
-      <textarea id="prompt" rows="3" placeholder="Contoh: Dua orang berjalan di kota cyberpunk"
-        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600"></textarea>
-    </div>
+    const $ = id => document.getElementById(id);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    <!-- Upload Gambar 1 -->
-    <div>
-      <label class="block mb-1">Tambahkan Gambar 1 (Opsional)</label>
-      <input id="imageInput1" type="file" accept="image/*"
-        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
-    </div>
+    $("gen").addEventListener("click", async () => {
+      const apiKey = $("apiKey").value.trim();
+      const file = $("img").files[0];
+      const prompt = $("prompt").value.trim();
+      const ratio = $("ratio").value.trim() || "9:16";
+      const status = $("status"), pg = $("pg"), videoEl = $("out");
 
-    <!-- Upload Gambar 2 -->
-    <div>
-      <label class="block mb-1">Tambahkan Gambar 2 (Opsional)</label>
-      <input id="imageInput2" type="file" accept="image/*"
-        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
-    </div>
+      videoEl.removeAttribute("src"); videoEl.load();
+      if (!apiKey) { alert("Masukkan API Key dulu"); return; }
+      if (!file) { alert("Upload gambar dulu"); return; }
+      if (!prompt) { alert("Isi prompt deskripsinya"); return; }
 
-    <!-- Opsi Orientasi -->
-    <div>
-      <label class="block mb-1">Orientasi Video</label>
-      <select id="orientation" class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
-        <option value="9:16">📱 Potret (9:16)</option>
-        <option value="16:9">🖥️ Landscape (16:9)</option>
-      </select>
-    </div>
+      // convert file ke base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
 
-    <!-- Opsi Durasi -->
-    <div>
-      <label class="block mb-1">Durasi</label>
-      <select id="duration" class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
-        <option value="5">5 Detik</option>
-        <option value="8">8 Detik</option>
-      </select>
-    </div>
+      const ai = new GoogleGenAI({ apiKey });
+      status.textContent = "Mengirim job ke Veo 2...";
+      pg.style.display = "block"; pg.value = 10;
 
-    <!-- Adult Content -->
-    <div class="flex items-center space-x-2">
-      <input id="adult" type="checkbox" class="w-4 h-4">
-      <label for="adult">Izinkan konten dewasa 🔞</label>
-    </div>
-
-    <!-- Tombol Generate -->
-    <button onclick="generateVideo()" 
-      class="w-full bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg font-semibold">
-      🚀 Generate Video
-    </button>
-
-    <!-- Status -->
-    <p id="status" class="text-sm text-gray-400 text-center"></p>
-
-    <!-- Preview Video -->
-    <div id="previewBox" class="hidden">
-      <h2 class="text-lg font-bold mt-4 mb-2">Preview Video</h2>
-      <video id="preview" class="w-full rounded-lg shadow-md" controls></video>
-      <button id="downloadBtn" 
-        class="mt-4 w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-semibold">
-        ⬇️ Download MP4
-      </button>
-    </div>
-  </div>
-
-  <script>
-    async function uploadImage(apiKey, file) {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + apiKey,
-        { method: "POST", body: formData }
-      );
-
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
-      return data.file.uri; // Link gambar
-    }
-
-    async function generateVideo() {
-      const apiKey = document.getElementById("apiKey").value.trim();
-      const prompt = document.getElementById("prompt").value.trim();
-      const orientation = document.getElementById("orientation").value;
-      const duration = parseInt(document.getElementById("duration").value);
-      const adult = document.getElementById("adult").checked;
-      const status = document.getElementById("status");
-      const previewBox = document.getElementById("previewBox");
-      const videoEl = document.getElementById("preview");
-      const downloadBtn = document.getElementById("downloadBtn");
-      const imageInput1 = document.getElementById("imageInput1");
-      const imageInput2 = document.getElementById("imageInput2");
-
-      if (!apiKey || !prompt) {
-        alert("Isi API Key dan Prompt dulu!");
-        return;
-      }
-
-      status.textContent = "⏳ Mengupload gambar (jika ada)...";
-      previewBox.classList.add("hidden");
-
-      let imageUris = [];
       try {
-        if (imageInput1.files.length > 0) {
-          imageUris.push(await uploadImage(apiKey, imageInput1.files[0]));
+        let op = await ai.models.generateVideos({
+          model: "veo-2.0-generate-001",
+          prompt,
+          image: { imageBytes: base64, mimeType: file.type },
+          config: { aspectRatio: ratio }
+        });
+
+        let tries = 0;
+        while (!op.done) {
+          status.textContent = "Memproses... tunggu beberapa detik";
+          await sleep(8000);
+          op = await ai.operations.getVideosOperation({ operation: op });
+          tries++;
+          pg.value = Math.min(90, 10 + tries * 5);
         }
-        if (imageInput2.files.length > 0) {
-          imageUris.push(await uploadImage(apiKey, imageInput2.files[0]));
-        }
-      } catch (err) {
-        status.textContent = "⚠️ Gagal upload gambar: " + err.message;
-        return;
-      }
 
-      status.textContent = "⏳ Mengirim permintaan ke Veo2...";
+        const fileRef = op.response.generatedVideos?.[0]?.video;
+        if (!fileRef) throw new Error("Tidak ada video dalam respons");
 
-      // Request Video
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/veo-2.0:generateVideo?key=" + apiKey,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: { 
-              text: prompt,
-              images: imageUris.map(uri => ({ uri }))
-            },
-            aspectRatio: orientation,
-            durationSeconds: duration,
-            safetySettings: adult ? [] : [{ category: "ADULT", threshold: "BLOCK_ONLY_HIGH" }]
-          })
-        }
-      );
+        status.textContent = "Mengunduh video...";
+        pg.value = 95;
 
-      const operation = await res.json();
-      if (operation.error) {
-        status.textContent = "❌ Error: " + operation.error.message;
-        return;
-      }
-
-      status.textContent = "⏳ Video sedang diproses... tunggu beberapa detik";
-
-      // Polling sampai selesai
-      let opResult;
-      while (true) {
-        const check = await fetch("https://generativelanguage.googleapis.com/v1beta/" + operation.name + "?key=" + apiKey);
-        opResult = await check.json();
-        if (opResult.done) break;
-        await new Promise(r => setTimeout(r, 5000));
-      }
-
-      // Ambil URI video
-      const fileUrl = opResult.response.generatedVideos[0].video.uri;
-
-      // Preview
-      videoEl.src = fileUrl;
-      previewBox.classList.remove("hidden");
-      status.textContent = "✅ Video siap diputar & didownload";
-
-      // Download
-      downloadBtn.onclick = async () => {
-        const fileRes = await fetch(fileUrl);
-        const blob = await fileRes.blob();
+        const fileMeta = await ai.files.download({ file: fileRef });
+        const blob = new Blob([fileMeta.video.videoBytes], { type: "video/mp4" });
         const url = URL.createObjectURL(blob);
 
+        // tampilkan video di halaman
+        videoEl.src = url; 
+        videoEl.play().catch(() => {});
+
+        // buat link download
         const a = document.createElement("a");
         a.href = url;
-        a.download = "video.mp4";
-        a.click();
-        URL.revokeObjectURL(url);
-      };
-    }
+        a.download = "veo2-video.mp4"; // pastikan ada ekstensi
+        document.body.appendChild(a);
+
+        // cek apakah browser support atribut download
+        if (typeof a.download !== "undefined") {
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          // fallback Safari iOS/macOS
+          window.open(url, "_blank");
+        }
+
+        status.textContent = "✅ Selesai! Video sudah tersedia.";
+        pg.value = 100; setTimeout(() => pg.style.display = "none", 1200);
+
+      } catch (e) {
+        console.error(e);
+        status.textContent = "❌ Error: " + (e.message || e);
+        pg.style.display = "none";
+      }
+    });
   </script>
 </body>
 </html>
