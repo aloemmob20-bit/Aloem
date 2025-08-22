@@ -8,7 +8,7 @@
 </head>
 <body class="bg-gradient-to-br from-gray-900 to-gray-800 min-h-screen text-white flex items-center justify-center p-6">
   <div class="w-full max-w-lg bg-gray-900/80 backdrop-blur-md rounded-2xl shadow-2xl p-8 space-y-6">
-    <h1 class="text-2xl font-bold text-center">follow tiktok : aloemtv</h1>
+    <h1 class="text-2xl font-bold text-center">Follow Tiktok : aloemTV</h1>
 
     <div class="space-y-3">
       <input id="apiKey" type="password" placeholder="🔑 Google API Key"
@@ -87,16 +87,17 @@
         }
 
         const fileRef = op.response.generatedVideos?.[0]?.video;
-        if (!fileRef) throw new Error("Tidak ada video dalam respons");
+        if (!fileRef?.uri) throw new Error("Tidak ada URL video dalam respons");
 
         status.textContent = "⬇️ Mengunduh video...";
         pg.value = 95;
 
-        const fileMeta = await ai.files.download({ file: fileRef });
-        const blob = new Blob([fileMeta.video.videoBytes], { type: "video/mp4" });
+        // 🔥 fetch video dari URL langsung
+        const res = await fetch(fileRef.uri);
+        const blob = await res.blob();
         const url = URL.createObjectURL(blob);
 
-        // tampilkan video di halaman
+        // tampilkan video
         videoEl.src = url; 
         videoEl.play().catch(() => {});
 
