@@ -2,126 +2,115 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Veo 2 Video Generator</title>
+  <title>Veo2 Video Generator</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gradient-to-br from-gray-900 to-gray-800 min-h-screen text-white flex items-center justify-center p-6">
-  <div class="w-full max-w-lg bg-gray-900/80 backdrop-blur-md rounded-2xl shadow-2xl p-8 space-y-6">
-    <h1 class="text-2xl font-bold text-center">Follow Tiktok : aloemTV</h1>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-6">
+  <div class="w-full max-w-lg bg-gray-800 rounded-2xl shadow-xl p-6 space-y-4">
+    <h1 class="text-2xl font-bold text-center">Follow TikTok : aloemTV</h1>
 
-    <div class="space-y-3">
-      <input id="apiKey" type="password" placeholder="🔑 Google API Key"
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-      
-      <input id="img" type="file" accept="image/*"
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-      
-      <textarea id="prompt" rows="3" placeholder="📝 Deskripsi video..."
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
-      
-      <select id="ratio" class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-        <option value="9:16">📱 9:16 (default)</option>
-        <option value="16:9">🖥️ 16:9</option>
-        <option value="1:1">⬜ 1:1</option>
-      </select>
+    <!-- Input API Key -->
+    <div>
+      <label class="block mb-1">API Key Google</label>
+      <input id="apiKey" type="text" placeholder="Masukkan API Key"
+        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600">
     </div>
 
-    <button id="gen" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition font-semibold">
+    <!-- Input Prompt -->
+    <div>
+      <label class="block mb-1">Prompt (Deskripsi Video)</label>
+      <textarea id="prompt" rows="3" placeholder="Contoh: Pemandangan pantai indah dengan langit senja"
+        class="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600"></textarea>
+    </div>
+
+    <!-- Tombol Generate -->
+    <button onclick="generateVideo()" 
+      class="w-full bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg font-semibold">
       🚀 Generate Video
     </button>
 
-    <div class="space-y-2">
-      <progress id="pg" value="0" max="100" class="w-full h-3 rounded-lg" style="display:none"></progress>
-      <p id="status" class="text-sm text-gray-300"></p>
-    </div>
+    <!-- Status -->
+    <p id="status" class="text-sm text-gray-400 text-center"></p>
 
-    <video id="out" controls class="rounded-xl border border-gray-700 shadow-lg w-full"></video>
+    <!-- Preview Video -->
+    <div id="previewBox" class="hidden">
+      <h2 class="text-lg font-bold mt-4 mb-2">Preview Video</h2>
+      <video id="preview" class="w-full rounded-lg shadow-md" controls></video>
+      <button id="downloadBtn" 
+        class="mt-4 w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-semibold">
+        ⬇️ Download MP4
+      </button>
+    </div>
   </div>
 
-  <script type="module">
-    import { GoogleGenAI } from "https://esm.sh/@google/genai";
+  <script>
+    async function generateVideo() {
+      const apiKey = document.getElementById("apiKey").value.trim();
+      const prompt = document.getElementById("prompt").value.trim();
+      const status = document.getElementById("status");
+      const previewBox = document.getElementById("previewBox");
+      const videoEl = document.getElementById("preview");
+      const downloadBtn = document.getElementById("downloadBtn");
 
-    const $ = id => document.getElementById(id);
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+      if (!apiKey || !prompt) {
+        alert("Isi API Key dan Prompt dulu!");
+        return;
+      }
 
-    $("gen").addEventListener("click", async () => {
-      const apiKey = $("apiKey").value.trim();
-      const file = $("img").files[0];
-      const prompt = $("prompt").value.trim();
-      const ratio = $("ratio").value.trim() || "9:16";
-      const status = $("status"), pg = $("pg"), videoEl = $("out");
+      status.textContent = "⏳ Mengirim permintaan ke Veo2...";
+      previewBox.classList.add("hidden");
 
-      videoEl.removeAttribute("src"); videoEl.load();
-      if (!apiKey) { alert("Masukkan API Key dulu"); return; }
-      if (!file) { alert("Upload gambar dulu"); return; }
-      if (!prompt) { alert("Isi prompt deskripsinya"); return; }
-
-      // convert file ke base64
-      const base64 = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res(reader.result.split(",")[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
-
-      const ai = new GoogleGenAI({ apiKey });
-      status.textContent = "📡 Mengirim job ke Veo 2...";
-      pg.style.display = "block"; pg.value = 10;
-
-      try {
-        let op = await ai.models.generateVideos({
-          model: "veo-2.0-generate-001",
-          prompt,
-          image: { imageBytes: base64, mimeType: file.type },
-          config: { aspectRatio: ratio }
-        });
-
-        let tries = 0;
-        while (!op.done) {
-          status.textContent = "⚙️ Memproses... tunggu sebentar";
-          await sleep(8000);
-          op = await ai.operations.getVideosOperation({ operation: op });
-          tries++;
-          pg.value = Math.min(90, 10 + tries * 5);
+      // 1. Request Video
+      const res = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/veo-2.0:generateVideo?key=" + apiKey,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: { text: prompt },
+            aspectRatio: "9:16"
+          })
         }
+      );
 
-        const fileRef = op.response.generatedVideos?.[0]?.video;
-        if (!fileRef?.uri) throw new Error("Tidak ada URL video dalam respons");
+      const operation = await res.json();
+      if (operation.error) {
+        status.textContent = "❌ Error: " + operation.error.message;
+        return;
+      }
 
-        status.textContent = "⬇️ Mengunduh video...";
-        pg.value = 95;
+      status.textContent = "⏳ Video sedang diproses... tunggu beberapa detik";
 
-        // 🔥 fetch video dari URL langsung
-        const res = await fetch(fileRef.uri);
-        const blob = await res.blob();
+      // 2. Polling (cek sampai selesai)
+      let opResult;
+      while (true) {
+        const check = await fetch("https://generativelanguage.googleapis.com/v1beta/" + operation.name + "?key=" + apiKey);
+        opResult = await check.json();
+        if (opResult.done) break;
+        await new Promise(r => setTimeout(r, 5000)); // cek tiap 5 detik
+      }
+
+      // 3. Ambil URI video
+      const fileUrl = opResult.response.generatedVideos[0].video.uri;
+
+      // 4. Tampilkan preview
+      videoEl.src = fileUrl;
+      previewBox.classList.remove("hidden");
+      status.textContent = "✅ Video siap diputar & didownload";
+
+      // 5. Tombol Download
+      downloadBtn.onclick = async () => {
+        const fileRes = await fetch(fileUrl);
+        const blob = await fileRes.blob();
         const url = URL.createObjectURL(blob);
 
-        // tampilkan video
-        videoEl.src = url; 
-        videoEl.play().catch(() => {});
-
-        // auto-download
         const a = document.createElement("a");
         a.href = url;
-        a.download = "veo2-video.mp4";
-        document.body.appendChild(a);
-        if (typeof a.download !== "undefined") {
-          a.click();
-          document.body.removeChild(a);
-        } else {
-          window.open(url, "_blank"); // fallback Safari
-        }
-
-        status.textContent = "✅ Selesai! Video siap.";
-        pg.value = 100; setTimeout(() => pg.style.display = "none", 1200);
-
-      } catch (e) {
-        console.error(e);
-        status.textContent = "❌ Error: " + (e.message || e);
-        pg.style.display = "none";
-      }
-    });
+        a.download = "video.mp4";
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+    }
   </script>
 </body>
 </html>
