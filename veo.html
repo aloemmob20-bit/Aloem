@@ -3,38 +3,115 @@
 <head>
   <meta charset="utf-8" />
   <title>Veo 2 – Image to Video (9:16)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body{font-family:sans-serif;max-width:780px;margin:40px auto;padding:0 16px}
-    textarea{width:100%;min-height:100px}
-    input,button{width:100%;margin-top:6px;padding:8px}
-    video{width:100%;max-height:70vh;margin-top:12px;background:#000;border-radius:12px}
-    progress{width:100%;margin-top:8px}
+    body{font-family:sans-serif;max-width:760px;margin:40px auto;padding:0 16px;text-align:left}
+    h1{font-size:1.3rem;margin-bottom:1rem}
+    label{display:block;margin:10px 0;font-weight:600}
+    input,textarea,button{width:100%;padding:8px;margin-top:4px;font-size:1rem}
+    button{cursor:pointer;background:#111;color:#fff;border:none;border-radius:8px}
+    progress{width:100%;margin:10px 0;display:none}
+    video{width:100%;max-height:70vh;margin-top:16px;background:#000;border-radius:12px}
     .muted{color:#666;font-size:.9rem}
+    #download{display:none;margin-top:12px;display:inline-block;padding:8px 12px;background:#4caf50;color:#fff;border-radius:6px;text-decoration:none}
   </style>
 </head>
 <body>
-  <h2>Veo2 aloemTV</h2>
-  <p class="muted">Gunakan Gemini API Key (Google AI Studio / Skills Boost)</p>
+  <h1>🎥 Veo 2 – Generate Video 9:16 dari Gambar</h1>
+  <p class="muted">Gunakan API key dari Google AI Studio / Skill Boost. <br><b>Catatan:</b> API key akan berjalan di browser Anda (jangan dipakai untuk produksi).</p>
 
-  <label>API Key
-    <input id="apiKey" type="password" placeholder="Masukkan API key" />
+  <label>API Key:
+    <input id="apiKey" type="password" placeholder="Masukkan API Key (AI...)" />
   </label>
 
-  <label>Upload Gambar
+  <label>Upload Gambar:
     <input id="img" type="file" accept="image/*" />
   </label>
 
-  <label>Prompt Deskripsi Video
-    <textarea id="prompt" placeholder="Contoh: Cinematic zoom-out dari gambar ini, pencahayaan dramatis, kualitas ultra realistis."></textarea>
+  <label>Prompt:
+    <textarea id="prompt" placeholder="Contoh: Zoom-out cinematic dari gambar ini, lighting dramatis, realistis."></textarea>
   </label>
 
-  <label>Aspect Ratio
+  <label>Aspect Ratio:
     <input id="ratio" type="text" value="9:16" />
   </label>
 
-  <button id="gen">Generate Video</button>
-  <progress id="pg" max="100" value="0" style="display:none"></progress>
+  <button id="gen">🚀 Generate Video</button>
+  <progress id="pg" max="100" value="0"></progress>
   <div id="status" class="muted"></div>
 
   <video id="out" controls playsinline></video>
-  <a id="download" download
+  <br />
+  <a id="download" download="veo2-image-video.mp4">⬇ Download Video</a>
+
+  <script type="module">
+    import { GoogleGenAI } from "https://esm.sh/@google/genai";
+
+    const $ = id => document.getElementById(id);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    $("gen").addEventListener("click", async () => {
+      const apiKey = $("apiKey").value.trim();
+      const file = $("img").files[0];
+      const prompt = $("prompt").value.trim();
+      const ratio = $("ratio").value.trim() || "9:16";
+      const status = $("status"), pg = $("pg"), videoEl = $("out"), dl = $("download");
+
+      dl.style.display="none"; videoEl.removeAttribute("src"); videoEl.load();
+      if(!apiKey){alert("Masukkan API Key dulu");return;}
+      if(!file){alert("Upload gambar dulu");return;}
+      if(!prompt){alert("Isi prompt deskripsinya");return;}
+
+      // convert file ke base64
+      const base64 = await new Promise((res,rej)=>{
+        const reader = new FileReader();
+        reader.onload=()=>res(reader.result.split(",")[1]);
+        reader.onerror=rej;
+        reader.readAsDataURL(file);
+      });
+
+      const ai = new GoogleGenAI({ apiKey });
+      status.textContent="Mengirim job ke Veo 2...";
+      pg.style.display="block"; pg.value=10;
+
+      try {
+        let op = await ai.models.generateVideos({
+          model: "veo-2.0-generate-001",
+          prompt,
+          image:{ imageBytes: base64, mimeType: file.type },
+          config:{ aspectRatio: ratio }
+        });
+
+        let tries=0;
+        while(!op.done){
+          status.textContent="Memproses... tunggu beberapa detik";
+          await sleep(8000);
+          op = await ai.operations.getVideosOperation({ operation: op });
+          tries++;
+          pg.value = Math.min(90, 10+tries*5);
+        }
+
+        const fileRef = op.response.generatedVideos?.[0]?.video;
+        if(!fileRef) throw new Error("Tidak ada video dalam respons");
+
+        status.textContent="Mengunduh video...";
+        pg.value=95;
+
+        const fileMeta = await ai.files.download({ file:fileRef });
+        const blob = new Blob([fileMeta.video.videoBytes], { type:"video/mp4" });
+        const url = URL.createObjectURL(blob);
+
+        videoEl.src=url; videoEl.play().catch(()=>{});
+        dl.href=url; dl.style.display="inline-block";
+        status.textContent="✅ Selesai!";
+        pg.value=100; setTimeout(()=>pg.style.display="none",1200);
+
+      } catch(e){
+        console.error(e);
+        status.textContent="❌ Error: "+(e.message||e);
+        pg.style.display="none";
+      }
+    });
+  </script>
+</body>
+</html>
