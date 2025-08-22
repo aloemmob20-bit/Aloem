@@ -1,127 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Veo 2 Video Generator</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8" />
+  <title>Veo 2 — Generate Video 9:16 + Image Upload</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{margin:0;font-family:system-ui,Arial;background:#0b1020;color:#eee}
+    .wrap{max-width:900px;margin:32px auto;padding:0 16px}
+    .card{background:#121935;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+    h1{margin:0 0 8px;font-size:22px}
+    label{font-size:14px;display:block;margin-top:12px}
+    input,textarea,button{width:100%;padding:12px;margin-top:4px;border-radius:10px;border:1px solid #2a355d;background:#0d1430;color:#eee;font-size:15px}
+    textarea{min-height:100px}
+    button{background:linear-gradient(180deg,#5ea0ff,#4b86ff);border:none;font-weight:bold;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .log{background:#0a0f22;border:1px solid #2a355d;border-radius:10px;padding:10px;white-space:pre-wrap;margin-top:12px;min-height:80px}
+    video{width:100%;margin-top:12px;border-radius:10px;background:#000}
+    #previewImg{max-width:200px;max-height:200px;display:none;margin-top:8px;border-radius:8px;border:1px solid #2a355d}
+    a.btn{display:inline-block;margin-top:10px;padding:10px 14px;background:#a6c7ff;color:#000;font-weight:bold;border-radius:10px;text-decoration:none}
+  </style>
 </head>
-<body class="bg-gradient-to-br from-gray-900 to-gray-800 min-h-screen text-white flex items-center justify-center p-6">
-  <div class="w-full max-w-lg bg-gray-900/80 backdrop-blur-md rounded-2xl shadow-2xl p-8 space-y-6">
-    <h1 class="text-2xl font-bold text-center">🎬 Veo 2 Video Generator</h1>
-
-    <div class="space-y-3">
-      <input id="apiKey" type="password" placeholder="🔑 Google API Key"
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-      
-      <input id="img" type="file" accept="image/*"
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-      
-      <textarea id="prompt" rows="3" placeholder="📝 Deskripsi video..."
-        class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
-      
-      <select id="ratio" class="w-full p-3 rounded-xl bg-gray-800 text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-        <option value="9:16">📱 9:16 (default)</option>
-        <option value="16:9">🖥️ 16:9</option>
-        <option value="1:1">⬜ 1:1</option>
-      </select>
-    </div>
-
-    <button id="gen" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition font-semibold">
-      🚀 Generate Video
-    </button>
-
-    <div class="space-y-2">
-      <progress id="pg" value="0" max="100" class="w-full h-3 rounded-lg" style="display:none"></progress>
-      <p id="status" class="text-sm text-gray-300"></p>
-    </div>
-
-    <video id="out" controls class="rounded-xl border border-gray-700 shadow-lg w-full"></video>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Veo 2 — Video Generator (9:16) + Image</h1>
+    <label>API Key
+      <input id="apiKey" type="password" placeholder="Tempel API Key Google Anda">
+    </label>
+    <label>Prompt
+      <textarea id="prompt" placeholder="Deskripsi video..."></textarea>
+    </label>
+    <label>Upload Gambar (opsional, .jpg/.png)
+      <input id="image" type="file" accept="image/*">
+      <img id="previewImg" />
+    </label>
+    <button id="go">Generate Video</button>
+    <div id="log" class="log">Log siap…</div>
+    <a id="download" class="btn" href="#" download="veo2.mp4" style="display:none">⬇️ Download MP4</a>
+    <video id="preview" controls style="display:none"></video>
   </div>
+</div>
 
-  <script type="module">
-    import { GoogleGenAI } from "https://esm.sh/@google/genai";
+<script>
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+const $ = id => document.getElementById(id);
+const log = t => { $("log").textContent += (typeof t==="string"?t:JSON.stringify(t,null,2))+"\n"; $("log").scrollTop=$("log").scrollHeight; };
 
-    const $ = id => document.getElementById(id);
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
+// convert file ke base64
+async function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result.split(",")[1]);
+    reader.onerror = e => reject(e);
+    reader.readAsDataURL(file);
+  });
+}
 
-    $("gen").addEventListener("click", async () => {
-      const apiKey = $("apiKey").value.trim();
-      const file = $("img").files[0];
-      const prompt = $("prompt").value.trim();
-      const ratio = $("ratio").value.trim() || "9:16";
-      const status = $("status"), pg = $("pg"), videoEl = $("out");
+async function startJob(apiKey, payload){
+  const res = await fetch(`${BASE_URL}/models/veo-2.0-generate-001:predictLongRunning`,{
+    method:"POST",
+    headers:{ "x-goog-api-key":apiKey,"Content-Type":"application/json"},
+    body:JSON.stringify(payload)
+  });
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+async function pollJob(apiKey, name, onTick){
+  let tries=0;
+  while(true){
+    await new Promise(r=>setTimeout(r,5000));
+    tries++;
+    const res=await fetch(`${BASE_URL}/${name}`,{headers:{"x-goog-api-key":apiKey}});
+    if(!res.ok) throw new Error(await res.text());
+    const st=await res.json();
+    onTick?.(st,tries);
+    if(st.done) return st;
+  }
+}
+async function downloadSigned(apiKey, uri){
+  const res=await fetch(uri,{headers:{"x-goog-api-key":apiKey}});
+  if(!res.ok) throw new Error(await res.text());
+  return res.blob();
+}
 
-      videoEl.removeAttribute("src"); videoEl.load();
-      if (!apiKey) { alert("Masukkan API Key dulu"); return; }
-      if (!file) { alert("Upload gambar dulu"); return; }
-      if (!prompt) { alert("Isi prompt deskripsinya"); return; }
+// preview image saat upload
+$("image").addEventListener("change",()=>{
+  const f=$("image").files[0];
+  if(f){ $("previewImg").src=URL.createObjectURL(f); $("previewImg").style.display="block"; }
+});
 
-      // convert file ke base64
-      const base64 = await new Promise((res, rej) => {
-        const reader = new FileReader();
-        reader.onload = () => res(reader.result.split(",")[1]);
-        reader.onerror = rej;
-        reader.readAsDataURL(file);
-      });
+$("go").addEventListener("click", async ()=>{
+  const apiKey=$("apiKey").value.trim();
+  const prompt=$("prompt").value.trim();
+  const imgFile=$("image").files[0];
 
-      const ai = new GoogleGenAI({ apiKey });
-      status.textContent = "📡 Mengirim job ke Veo 2...";
-      pg.style.display = "block"; pg.value = 10;
+  $("download").style.display="none";
+  $("preview").style.display="none";
+  $("log").textContent="";
 
-      try {
-        let op = await ai.models.generateVideos({
-          model: "veo-2.0-generate-001",
-          prompt,
-          image: { imageBytes: base64, mimeType: file.type },
-          config: { aspectRatio: ratio }
-        });
+  if(!apiKey){alert("Isi API Key dulu");return;}
+  if(!prompt){alert("Isi prompt dulu");return;}
 
-        let tries = 0;
-        while (!op.done) {
-          status.textContent = "⚙️ Memproses... tunggu sebentar";
-          await sleep(8000);
-          op = await ai.operations.getVideosOperation({ operation: op });
-          tries++;
-          pg.value = Math.min(90, 10 + tries * 5);
-        }
+  try{
+    let imagesArr = [];
+    if(imgFile){
+      log("Konversi gambar ke Base64…");
+      const b64 = await fileToBase64(imgFile);
+      imagesArr.push({ mimeType: imgFile.type, bytesBase64: b64 });
+    }
 
-        const fileRef = op.response.generatedVideos?.[0]?.video;
-        if (!fileRef?.uri) throw new Error("Tidak ada URL video dalam respons");
+    log("Mengirim job video…");
+    const payload = {
+      instances:[{ prompt, images: imagesArr }],
+      parameters:{ aspectRatio:"9:16" }
+    };
+    const op = await startJob(apiKey,payload);
+    log("Job dimulai: "+op.name);
 
-        status.textContent = "⬇️ Mengunduh video...";
-        pg.value = 95;
-
-        // 🔥 fetch video dari URL langsung
-        const res = await fetch(fileRef.uri);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-
-        // tampilkan video
-        videoEl.src = url; 
-        videoEl.play().catch(() => {});
-
-        // auto-download
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "veo2-video.mp4";
-        document.body.appendChild(a);
-        if (typeof a.download !== "undefined") {
-          a.click();
-          document.body.removeChild(a);
-        } else {
-          window.open(url, "_blank"); // fallback Safari
-        }
-
-        status.textContent = "✅ Selesai! Video siap.";
-        pg.value = 100; setTimeout(() => pg.style.display = "none", 1200);
-
-      } catch (e) {
-        console.error(e);
-        status.textContent = "❌ Error: " + (e.message || e);
-        pg.style.display = "none";
-      }
-    });
-  </script>
+    const final=await pollJob(apiKey,op.name,(s,i)=> log(`Polling #${i} — done: ${!!s.done}`));
+    const sample=final?.response?.generateVideoResponse?.generatedSamples?.[0];
+    if(!sample?.video?.uri) throw new Error("Tidak ada URI video");
+    log("Mengunduh video…");
+    const blob=await downloadSigned(apiKey,sample.video.uri);
+    const url=URL.createObjectURL(blob);
+    $("download").href=url;
+    $("download").style.display="inline-block";
+    $("preview").src=url;
+    $("preview").style.display="block";
+    log("Selesai ✅");
+  }catch(e){
+    console.error(e);
+    log("ERROR: "+e.message);
+  }
+});
+</script>
 </body>
 </html>
